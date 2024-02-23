@@ -2,6 +2,6 @@
 
 TEAM MEMBERS:
 
-Clara Chen jiaxc1 24284204
+Clara Chen, jiaxc1, 24284204
 
-Athena Rapinan arapinan 14407188
+Athena Rapinan, arapinan, 14407188
