@@ -3,7 +3,11 @@ import json
 import re
 from nltk.stem import PorterStemmer, SnowballStemmer
 from bs4 import BeautifulSoup
+import pandas as pd
 
+
+# define the initial merged index DataFrame
+merged_index = pd.DataFrame(columns=["token", "occurrences"])
 
 # dict where key is the file and the value is the doc id 
 file_id_dict = {}
@@ -18,24 +22,17 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 14000
+partial_index_threshold = 8000
 
 # number of files processed
 file_count = 0
 
-
-# TODO: make inverted index map
-    # key: word
-    # value: doc id, frequency
-    # ex. file 1: {cat: [(1, 5), (2, 7)], dog: [(1, 10)]}
-    #     file 2: {cat: [(3, 5), (4, 3)], dog: [(4, 9)], cow: [4, 3]}
-
-
-# TODO: detect duplicate pages
-# TODO: account for important text
+# final file for inverted index
+output_file = "inverted_index.json"
 
 
 def tokenize(file: str) -> list:
+    global file_count
     """
     Tokenize the text from a specified file.
     """
@@ -43,6 +40,14 @@ def tokenize(file: str) -> list:
         # open the file and read its contents
         with open(file, "r") as input_file:
             file_info = json.load(input_file)
+         
+        # check if the content is in HTML format
+        if "</html>" not in file_info["content"].lower():
+            # skip non-HTML content
+            return []
+        
+        # increment file count
+        file_count += 1
 
         content = file_info["content"]
         
@@ -55,10 +60,15 @@ def tokenize(file: str) -> list:
         # use regex to split on non-alphanumeric characters
         tokens = re.split(r'[^a-zA-Z0-9]+', text.lower())
 
-        # remove empty strings from token list
-        tokens = [token for token in tokens if token]
+        # remove empty strings and single chars from token list
+        tokens = [token for token in tokens if token and len(token) > 1]
 
-         
+        # sort the tokens
+        tokens = sorted(tokens)
+
+        for token in tokens:
+            word_set.add(token)
+
         return tokens
     except FileNotFoundError as e:
         return []
@@ -78,18 +88,6 @@ def stem_tokens(tokens: list) -> list:
     return tokens
 
 
-# def detect_exact_similarity(tokens: list):
-#     """
-#     Detect exact similarity using the checksum technique.
-#     """
-
-
-# def detect_near_similarity(tokens: list):
-#     """
-#     Detect near similiarity using the simhash technique.
-#     """
-
-
 def process_tokens(file):
     # similar_files = False
             
@@ -99,17 +97,7 @@ def process_tokens(file):
         tokens = tokenize(file)
         # stem the tokens 
         tokens = stem_tokens(tokens)
-        
-    #     # detect duplicate pages
-    #     exact_similar_files = detect_exact_similarity(tokens)
-    #     near_similar_files = detect_near_similarity(tokens)
-        
-    #     if not exact_similar_files and not near_similar_files:
-    #         dict_length = len(file_id_dict)
-    #         file_id_dict[file] = dict_length + 1
-    #     else:
-    #         similar_files = True
-    # return similar_files
+    
         dict_length = len(file_id_dict)
         file_id_dict[file] = dict_length + 1
     return tokens
@@ -119,11 +107,6 @@ def process_file(file, tokens):
     """
     add tokens to partial index
     """
-    # TODO: we need to add more global variables to do this and add extra checks for this...
-
-    # TODO: account for important text
-    # TODO: why do we need to do this, and what will do do with this information once we
-    # determine which text is important? i think we should move it before
     for token in tokens:
         # if word exists in inverted_index -> increase frequency
         if token in partial_index:
@@ -139,53 +122,44 @@ def process_file(file, tokens):
         # if not -> add to inverted_index (value = [(id, 1)])
         else:
             partial_index[token] = [[file_id_dict[file], 1]]
-    # TODO: if index gets to big -> dump to file
         
 
 def dump_partial_index():
     """
-    dump the partial index to a file in JSON format
+    Dump the partial index to a file in JSON format and merge with the existing merged index.
     """
-    partial_index_file = "index" + str(len(partial_indices)) + ".json"
-    with open(partial_index_file, "w") as output_file:
-        json.dump(partial_index, output_file, indent=4)
-     
-
-def merge_partial_indices():
+    global partial_index
     global word_set
+    global merged_index
+    
+    # create a partial index DataFrame
+    partial_index_df = pd.DataFrame(partial_index.items(), columns=["token", "occurrences"])
+    
+    # merge current partial index with existing merged index df
+    merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
+    
+    # clear the partial index dict
+    partial_index.clear()
 
-    inverted_index_file = "inverted_index.json"
-    with open(inverted_index_file, "a") as inverted_index_report:
-        for index_1 in range(len(partial_indices)):
-            index_file = "index" + str(index_1) + ".json"
-            with open(index_file, "r") as partial_index_file:
-                # load the partial index data
-                index_data = json.load(partial_index_file)
-                # iterate through each token in the file
-                for token in index_data:
-                    # check if the token was already merged
-                    if token not in word_set:
-                        token_dict = dict()
-                        # initialize an occurences list with all occurences in current file
-                        occurences = index_data[token]
-                        # iterate through other partial indices to check if they contain this token 
-                        for index_2 in range(len(partial_indices)):
-                            if index_1 != index_2:
-                                # open and load other file's data
-                                other_index_file = "index" + str(index_2) + ".json"
-                                with open(other_index_file, "r") as other_partial_index_file:
-                                    other_index_data = json.load(other_partial_index_file)
-                                    # check if the token exists in the other file
-                                    if token in other_index_data.keys():
-                                        # add all other index's occurences to existing occurences
-                                        other_index_occurences = other_index_data[token]
-                                        occurences.append(other_index_occurences)
-                        token_dict[token] = occurences
-                        # add the token to word_set
-                        word_set.add(token)
-                    # dump this token to final inverted index
-                    json.dump(token_dict, inverted_index_report, indent=4)
-                    inverted_index_report.write('\n')
+    # write the merged index to disk
+    write_merged_index_to_disk(merged_index)
+    
+    # update result file
+    write_result_to_file()
+    print("dumped + merged")
+
+
+def write_merged_index_to_disk(merged_index):
+    """
+    Write the merged index to a JSON file
+    """
+    global output_file
+    
+    # group by token and aggregate occurrences
+    merged_index = merged_index.groupby("token")["occurrences"].sum().reset_index()
+
+    # write the merged index to a JSON file
+    merged_index.to_json(output_file, orient="records")
 
 
 def iterateDirectory() -> None:
@@ -193,7 +167,6 @@ def iterateDirectory() -> None:
     Recursively iterate through the DEV folder to process all the files.
     """
     global partial_index 
-    global file_count
      
     directory_path = "DEV"
 
@@ -212,8 +185,6 @@ def iterateDirectory() -> None:
                     # dump the partial index to a file
                     dump_partial_index()
 
-                    partial_indices.append(len(partial_indices))
-
                     # clear the partial index dict
                     partial_index.clear()
 
@@ -221,21 +192,29 @@ def iterateDirectory() -> None:
                     file_path = os.path.join(root, file)
                     tokens = process_tokens(file_path)
                     process_file(file_path, tokens)
-                file_count += 1
-         
+    # dump one last time with current partial index
+    if (len(partial_index) > 0):
+        dump_partial_index()
+        write_merged_index_to_disk(merged_index)
+
 
 def write_result_to_file():
+    """
+    write the results to a file
+    """
     result_file = "results.txt"
     with open(result_file, "w") as output_result_file:
         output_result_file.write("number of documents processed: " + str(file_count) + "\n")
         output_result_file.write("number of unique words: " + str(len(word_set)) + "\n")
         
- 
-def main():
-    iterateDirectory()
-    merge_partial_indices()
-    write_result_to_file()
 
+def main():
+    # iterate through the files and process the tokens
+    iterateDirectory()
+    # write the final results to a file
+    write_result_to_file()
+ 
 
 if __name__ == "__main__":
     main()
+
