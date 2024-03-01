@@ -7,7 +7,7 @@ import pandas as pd
 
 
 # define the initial merged index DataFrame
-merged_index = pd.DataFrame(columns=["token", "occurrences"])
+merged_index = pd.DataFrame(columns=["token", "freq"])
 
 # dict where key is the file and the value is the doc id 
 file_id_dict = {}
@@ -22,7 +22,7 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 8000
+partial_index_threshold = 50000
 
 # number of files processed
 file_count = 0
@@ -131,9 +131,10 @@ def dump_partial_index():
     global partial_index
     global word_set
     global merged_index
+    global partial_indices
     
     # create a partial index DataFrame
-    partial_index_df = pd.DataFrame(partial_index.items(), columns=["token", "occurrences"])
+    partial_index_df = pd.DataFrame(partial_index.items(), columns=["token", "freq"])
     
     # merge current partial index with existing merged index df
     merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
@@ -142,21 +143,49 @@ def dump_partial_index():
     partial_index.clear()
 
     # write the merged index to disk
-    write_merged_index_to_disk(merged_index)
+    # write_merged_index_to_disk(merged_index)
+
+    # write the partial index to disk
+    partial_index_file = f"partial_index_{len(partial_indices)}.json"
+    partial_index_df.to_json(partial_index_file, orient="records")
+    partial_indices.append(partial_index_file)
     
     # update result file
     write_result_to_file()
-    print("dumped + merged")
+    print("dumped")
 
 
-def write_merged_index_to_disk(merged_index):
-    """
-    Write the merged index to a JSON file
-    """
-    global output_file
+# def write_merged_index_to_disk(merged_index):
+#     """
+#     Write the merged index to a JSON file
+#     """
+#     global output_file
     
-    # group by token and aggregate occurrences
-    merged_index = merged_index.groupby("token")["occurrences"].sum().reset_index()
+#     # group by token and aggregate occurrences
+#     merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
+
+#     # write the merged index to a JSON file
+#     merged_index.to_json(output_file, orient="records")
+    
+
+def merge_partial_indices():
+    """
+    merge all the partial indices into a single DataFrame.
+    """
+    global merged_index
+    global partial_indices
+    
+    # initialize an empty DataFrame for merged index
+    merged_index = pd.DataFrame(columns=["token", "freq"])
+    
+    # merge all partial indices
+    for file in partial_indices:
+        partial_index_df = pd.read_json(file)
+        merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
+        print("merged file")
+    
+    # group by token and combine frequencies
+    merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
 
     # write the merged index to a JSON file
     merged_index.to_json(output_file, orient="records")
@@ -174,28 +203,20 @@ def iterateDirectory() -> None:
     for root, dirs, files in os.walk(directory_path):
         for file in files:
             if file != ".DS_Store":
-                if len(partial_index) < partial_index_threshold:
-                    # similar_files = process_tokens(file)
-                    # if not similar_files:
-                    #     process_file(file)
-                    file_path = os.path.join(root, file)
-                    tokens = process_tokens(file_path)
-                    process_file(file_path, tokens)
-                else:
-                    # dump the partial index to a file
+                # similar_files = process_tokens(file)
+                # if not similar_files:
+                #     process_file(file)
+                file_path = os.path.join(root, file)
+                tokens = process_tokens(file_path)
+                process_file(file_path, tokens)
+
+                # check if partial index needs to be dumped
+                if len(partial_index) >= partial_index_threshold:
                     dump_partial_index()
-
-                    # clear the partial index dict
-                    partial_index.clear()
-
-                    # process the tokens in this file
-                    file_path = os.path.join(root, file)
-                    tokens = process_tokens(file_path)
-                    process_file(file_path, tokens)
     # dump one last time with current partial index
     if (len(partial_index) > 0):
         dump_partial_index()
-        write_merged_index_to_disk(merged_index)
+        # write_merged_index_to_disk(merged_index)
 
 
 def write_result_to_file():
@@ -211,6 +232,10 @@ def write_result_to_file():
 def main():
     # iterate through the files and process the tokens
     iterateDirectory()
+
+     # merge all partial indices into a single DataFrame
+    merge_partial_indices()
+
     # write the final results to a file
     write_result_to_file()
  
