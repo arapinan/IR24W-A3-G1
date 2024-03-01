@@ -22,7 +22,7 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 50000
+partial_index_threshold = 8000
 
 # number of files processed
 file_count = 0
@@ -175,20 +175,46 @@ def merge_partial_indices():
     global merged_index
     global partial_indices
     
-    # initialize an empty DataFrame for merged index
-    merged_index = pd.DataFrame(columns=["token", "freq"])
+    # # initialize an empty DataFrame for merged index
+    # merged_index = pd.DataFrame(columns=["token", "freq"])
     
-    # merge all partial indices
-    for file in partial_indices:
-        partial_index_df = pd.read_json(file)
-        merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
-        print("merged file")
+    # # merge all partial indices
+    # for file in partial_indices:
+    #     partial_index_df = pd.read_json(file)
+    #     merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
+    #     print("merged file")
     
-    # group by token and combine frequencies
-    merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
+    # # group by token and combine frequencies
+    # merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
 
-    # write the merged index to a JSON file
-    merged_index.to_json(output_file, orient="records")
+    # # write the merged index to a JSON file
+    # merged_index.to_json(output_file, orient="records")
+
+
+    # initialize empty DataFrames for each range of tokens
+    tokens_0_f = pd.DataFrame(columns=["token", "freq"])
+    tokens_g_p = pd.DataFrame(columns=["token", "freq"])
+    tokens_r_z = pd.DataFrame(columns=["token", "freq"])
+    
+    # group tokens based on the first letter
+    for file in partial_indices:
+        with open(file, "r") as f:
+            data = json.load(f)
+            for token_data in data:
+                token = token_data["token"]
+                freq = token_data["freq"]
+                first_letter = token[0].lower()
+                if first_letter.isdigit() or first_letter < "g":
+                    tokens_0_f = tokens_0_f._append({"token": token, "freq": freq}, ignore_index=True)
+                elif first_letter in "ghijklmnop":
+                    tokens_g_p = tokens_g_p._append({"token": token, "freq": freq}, ignore_index=True)
+                else:
+                    tokens_r_z = tokens_r_z._append({"token": token, "freq": freq}, ignore_index=True)
+    
+    # write DataFrames to JSON files
+    tokens_0_f.to_json("0_f.json", orient="records")
+    tokens_g_p.to_json("g_p.json", orient="records")
+    tokens_r_z.to_json("r_z.json", orient="records")
 
 
 def iterateDirectory() -> None:
