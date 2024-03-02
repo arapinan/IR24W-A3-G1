@@ -22,7 +22,7 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 8000
+partial_index_threshold = 80000
 
 # number of files processed
 file_count = 0
@@ -204,6 +204,16 @@ def merge_partial_indices():
                 token = token_data["token"]
                 freq = token_data["freq"]
                 first_letter = token[0].lower()
+
+                # calculate if-idf score
+                new_freq = []
+                idf = file_count / len(freq)
+                for doc_freq in freq:
+                    tf = doc_freq[1]
+                    doc_freq.append(tf * idf)
+                    new_freq.append(doc_freq)
+                freq = new_freq
+                
                 if first_letter.isdigit() or first_letter < "g":
                     tokens_0_f = tokens_0_f._append({"token": token, "freq": freq}, ignore_index=True)
                 elif first_letter in "ghijklmnop":
@@ -245,6 +255,21 @@ def iterateDirectory() -> None:
         # write_merged_index_to_disk(merged_index)
 
 
+def calculate_score():
+    """
+    calculate the tf-idf score of each term.
+    """
+    with open("0_f.json", "r") as inverted_index_1:
+        data = json.load(inverted_index_1)
+        current_token = ""
+        for token_data in data:
+            token = token_data["token"]
+            idf = file_count / len(token_data["freq"])
+            for doc_freq in token_data["freq"]:
+                tf = doc_freq[1]
+                doc_freq.append(tf * idf)
+
+
 def write_result_to_file():
     """
     write the results to a file
@@ -261,6 +286,9 @@ def main():
 
      # merge all partial indices into a single DataFrame
     merge_partial_indices()
+
+    # calculate the tf-idf score for each token
+    #calculate_score()
 
     # write the final results to a file
     write_result_to_file()
