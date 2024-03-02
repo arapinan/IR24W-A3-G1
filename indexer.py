@@ -1,5 +1,5 @@
 import os
-import json
+import orjson
 import re
 from nltk.stem import PorterStemmer, SnowballStemmer
 from bs4 import BeautifulSoup
@@ -22,10 +22,12 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 8000
+partial_index_threshold = 50000
 
 # number of files processed
 file_count = 0
+
+max_file_size = 20 * 1024 * 1024
 
 # final file for inverted index
 output_file = "inverted_index.json"
@@ -39,7 +41,7 @@ def tokenize(file: str) -> list:
     try:
         # open the file and read its contents
         with open(file, "r") as input_file:
-            file_info = json.load(input_file)
+            file_info = orjson.loads(input_file.read())
          
         # check if the content is in HTML format
         if "</html>" not in file_info["content"].lower():
@@ -147,8 +149,10 @@ def dump_partial_index():
 
     # write the partial index to disk
     partial_index_file = f"partial_index_{len(partial_indices)}.json"
-    partial_index_df.to_json(partial_index_file, orient="records")
+    with open(partial_index_file, "wb") as f:
+        f.write(orjson.dumps(partial_index_df.to_dict(orient="records")))  
     partial_indices.append(partial_index_file)
+    
     
     # update result file
     write_result_to_file()
@@ -198,8 +202,8 @@ def merge_partial_indices():
     
     # group tokens based on the first letter
     for file in partial_indices:
-        with open(file, "r") as f:
-            data = json.load(f)
+        with open(file, "rb") as f:
+            data = orjson.loads(f.read())  
             for token_data in data:
                 token = token_data["token"]
                 freq = token_data["freq"]
@@ -212,9 +216,12 @@ def merge_partial_indices():
                     tokens_r_z = tokens_r_z._append({"token": token, "freq": freq}, ignore_index=True)
     
     # write DataFrames to JSON files
-    tokens_0_f.to_json("0_f.json", orient="records")
-    tokens_g_p.to_json("g_p.json", orient="records")
-    tokens_r_z.to_json("r_z.json", orient="records")
+    with open("0_f.json", "wb") as f:
+        f.write(orjson.dumps(tokens_0_f.to_dict(orient="records")))
+    with open("g_p.json", "wb") as f:
+        f.write(orjson.dumps(tokens_g_p.to_dict(orient="records")))
+    with open("r_z.json", "wb") as f:
+        f.write(orjson.dumps(tokens_r_z.to_dict(orient="records")))
 
 
 def iterateDirectory() -> None:
@@ -233,12 +240,15 @@ def iterateDirectory() -> None:
                 # if not similar_files:
                 #     process_file(file)
                 file_path = os.path.join(root, file)
-                tokens = process_tokens(file_path)
-                process_file(file_path, tokens)
+                file_size = os.path.getsize(file_path)
+                # check file size
+                if file_size < max_file_size
+                    tokens = process_tokens(file_path)
+                    process_file(file_path, tokens)
 
-                # check if partial index needs to be dumped
-                if len(partial_index) >= partial_index_threshold:
-                    dump_partial_index()
+                    # check if partial index needs to be dumped
+                    if len(partial_index) >= partial_index_threshold:
+                        dump_partial_index()
     # dump one last time with current partial index
     if (len(partial_index) > 0):
         dump_partial_index()
