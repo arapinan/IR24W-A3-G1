@@ -239,7 +239,7 @@ def merge_partial_indices():
     tokens_0_f = tokens_0_f.sort_values(by="token")
     tokens_g_p = tokens_g_p.sort_values(by="token")
     tokens_r_z = tokens_r_z.sort_values(by="token")
-                 
+
     # write DataFrames to JSON files
     with open("0_f.json", "wb") as f:
         f.write(orjson.dumps(tokens_0_f.to_dict(orient="records")))
@@ -297,9 +297,17 @@ def binary_search(tokens, query_word):
     return -1  # Element was not found
 
 
+def get_file_prefix(word):
+    if word[0] < 'g':
+        return "0_f"
+    elif word[0] in "ghijklmnop":
+        return "g_p"
+    else:
+        return "r_z"
+    
 def process_user_query(query):
     """
-    prompt the user to input a query
+    process the user's query and return a list of documents that include the user's query words
     """ 
     # tokenize the query:
     query_tokens = re.split(r'[^a-zA-Z0-9]+', query.lower())
@@ -314,49 +322,28 @@ def process_user_query(query):
     found_word = False
 
     for word in query_tokens:
-        if word[0] < 'g':
-            with open("0_f.json", "rb") as f:
-                data = orjson.loads(f.read())
-                position = binary_search(data, word)
-                if position != -1:
-                    found_word = True
-                    # freq is a list of term frequencies
-                    token_freqs = data[position]["freq"]
-                    query_freqs_list.append(token_freqs)
-        if word[0] in "ghijklmnop":
-            with open("g_p.json", "rb") as f:
-                data = orjson.loads(f.read())
-                position = binary_search(data, word)
-                if position != -1:
-                    found_word = True
-                    # freq is a list of term frequencies
-                    token_freqs = data[position]["freq"]
-                    query_freqs_list.append(token_freqs)
-        else:
-            with open("r_z.json", "rb") as f:
-                data = orjson.loads(f.read())
-                position = binary_search(data, word)
-                if position != -1:
-                    found_word = True
-                    # freq is a list of term frequencies
-                    token_freqs = data[position]["freq"]
-                    query_freqs_list.append(token_freqs)
-    
+        file_prefix = get_file_prefix(word)
+        with open(f"{file_prefix}.json", "rb") as f:
+            data = orjson.loads(f.read())
+            position = binary_search(data, word)
+            if position != -1:
+                found_word = True
+                token_freqs = data[position]["freq"]
+                query_freqs_list.append(token_freqs)
+        
     if found_word:
         if len(query_freqs_list) == 1:
-            # return the docs
             sorted_docs = sorted(query_freqs_list[0], key=lambda x: x[2], reverse=True)
             sorted_docs = [item[0] for item in sorted_docs]
             return sorted_docs
-
         else:
-            # find intersection of words
             sorted_data = sorted(query_freqs_list, key=lambda x: len(x))
-            docs = [[doc_freq[0] for doc_freq in query_freq] for query_freq in query_freqs_list]
+            docs = [[doc_freq[0] for doc_freq in query_freq] for query_freq in sorted_data]
             common_docs = set(docs[0]).intersection(*docs[1:])
             return list(common_docs)
-
-
+    else:
+        return []
+    
 def write_result_to_file():
     """
     write the results to a file
@@ -391,9 +378,9 @@ def main():
     # get the top docs
     docs = process_user_query(query)
 
-    # keep only top 5 docs
-    if len(docs) >= 5:
-        docs = docs[0:5]
+    # # keep only top 5 docs
+    # if len(docs) >= 5:
+    #     docs = docs[0:5]
     
     # end timer
     end_time = time.time_ns() // 1000000
@@ -404,11 +391,5 @@ def main():
     print(docs)
 
 
-
-
-
- 
-
 if __name__ == "__main__":
     main()
-
