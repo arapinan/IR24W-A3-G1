@@ -218,7 +218,7 @@ def merge_partial_indices():
                 freq = token_data["freq"]
                 first_letter = token[0].lower()
 
-                # calculate if-idf score
+                # calculate tf-idf score
                 new_freq = []
                 idf = math.log(file_count / len(freq))
                 for doc_freq in freq:
@@ -304,7 +304,28 @@ def get_file_prefix(word):
         return "g_p"
     else:
         return "r_z"
+
+def get_common_docs(nested_lists, query_word_count):
+    # create a dictionary to store frequencies for each element
+    freq_dict = {}
     
+    # iterate over each sublist in the nested list
+    for lst in nested_lists:
+        for doc in lst:
+            doc_id = doc[0]
+            if doc_id in freq_dict:
+                freq_count = freq_dict[doc_id][0] + 1
+                score = freq_dict[doc_id][1] + doc[2]
+                freq_dict[doc_id] = [freq_count, score]
+            else:
+                freq_count = 1
+                score = doc[2] 
+                freq_dict[doc_id] = [freq_count, score]
+    
+    common_docs_dict = {key: value for key, value in freq_dict.items() if value[0] == query_word_count}
+    return common_docs_dict
+
+
 def process_user_query(query):
     """
     process the user's query and return a list of documents that include the user's query words
@@ -322,27 +343,24 @@ def process_user_query(query):
     found_word = False
 
     for word in query_tokens:
+        all_word_freqs = []
         file_prefix = get_file_prefix(word)
         with open(f"{file_prefix}.json", "rb") as f:
-            data = orjson.loads(f.read())
-            position = binary_search(data, word)
-            if position != -1:
-                found_word = True
-                token_freqs = data[position]["freq"]
-                query_freqs_list.append(token_freqs)
-        
-    if found_word:
-        if len(query_freqs_list) == 1:
-            sorted_docs = sorted(query_freqs_list[0], key=lambda x: x[2], reverse=True)
-            sorted_docs = [item[0] for item in sorted_docs]
-            return sorted_docs
-        else:
-            sorted_data = sorted(query_freqs_list, key=lambda x: len(x))
-            docs = [[doc_freq[0] for doc_freq in query_freq] for query_freq in sorted_data]
-            common_docs = set(docs[0]).intersection(*docs[1:])
-            return list(common_docs)
-    else:
-        return []
+            tokens = orjson.loads(f.read())
+            for i in range(len(tokens)):
+                if tokens[i]["token"] == word:
+                    found_word = True
+                    token_freqs = tokens[i]["freq"]
+                    all_word_freqs.extend(token_freqs)
+                      
+        query_freqs_list.append(all_word_freqs)
+
+        common_docs_dict = get_common_docs(query_freqs_list, len(query_tokens))
+
+        common_docs_dict = dict(sorted(common_docs_dict.items(), key=lambda x: x[1][1], reverse=True))
+
+    return common_docs_dict
+
     
 def write_result_to_file():
     """
@@ -376,19 +394,21 @@ def main():
     start_time = time.time_ns() // 1000000   
 
     # get the top docs
-    docs = process_user_query(query)
+    common_docs_dict = process_user_query(query)
 
-    # # keep only top 5 docs
-    # if len(docs) >= 5:
-    #     docs = docs[0:5]
+    # take top 5 documents
+    top_5_docs = dict(list(common_docs_dict.items())[:5])
+
+    top_5_doc_ids = list(top_5_docs.keys())
+
+    print("documents:", top_5_doc_ids)
+    print("file id dict size:", len(file_id_dict))
+    
     
     # end timer
     end_time = time.time_ns() // 1000000
     execution_time = end_time - start_time
     print("time:", execution_time, "ms")
-
-    # print the docs
-    print(docs)
 
 
 if __name__ == "__main__":
