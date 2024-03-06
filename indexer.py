@@ -7,10 +7,6 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import math
 
-
-# define the initial merged index DataFrame
-merged_index = pd.DataFrame(columns=["token", "freq"])
-
 # dict where key is the file and the value is the doc id 
 file_id_dict = {}
 
@@ -27,12 +23,16 @@ partial_index = {}
 word_set = set()
 
 # threshold for max tokens per partial index
-partial_index_threshold = 50000
+partial_index_threshold = 90000
 
 # number of files processed
 file_count = 0
 
 max_file_size = 20 * 1024 * 1024
+
+token_locs = {}
+
+combined_token_locs = {}
 
 # final file for inverted index
 output_file = "inverted_index.json"
@@ -73,9 +73,6 @@ def tokenize(file: str) -> list:
         # sort the tokens
         tokens = sorted(tokens)
 
-        for token in tokens:
-            word_set.add(token)
-
         return tokens
     except FileNotFoundError as e:
         return []
@@ -104,6 +101,9 @@ def process_tokens(file):
         tokens = tokenize(file)
         # stem the tokens 
         tokens = stem_tokens(tokens)
+
+        for token in tokens:
+            word_set.add(token)
     
         dict_length = len(file_id_dict)
         doc_id = dict_length + 1
@@ -140,113 +140,64 @@ def dump_partial_index():
     Dump the partial index to a file in JSON format and merge with the existing merged index.
     """
     global partial_index
-    global word_set
-    global merged_index
-    global partial_indices
-    
-    # create a partial index DataFrame
-    partial_index_df = pd.DataFrame(partial_index.items(), columns=["token", "freq"])
-    
-    # merge current partial index with existing merged index df
-    merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
-    
+
+    token_loc_dict = {}
+
+    # write partial index to a JSON file
+    with open(f"{len(partial_indices)}.json", "w") as partial_index_file:
+        for token, freq in partial_index.items():
+            loc = partial_index_file.tell()
+            token_loc_dict[token] = loc
+            json_data = {token: freq}
+            partial_index_file.write(orjson.dumps(json_data).decode())
+            # add a newline to separate records
+            partial_index_file.write('\n')  
+
+    token_locs[f"{len(partial_indices)}.json"] = token_loc_dict
+
     # clear the partial index dict
     partial_index.clear()
 
-    # write the merged index to disk
-    # write_merged_index_to_disk(merged_index)
+    # add the partial index to partial_indices
+    partial_indices.append(f"{len(partial_indices)}.json")
 
-    # write the partial index to disk
-    partial_index_file = f"partial_index_{len(partial_indices)}.json"
-    with open(partial_index_file, "wb") as f:
-        f.write(orjson.dumps(partial_index_df.to_dict(orient="records")))  
-    partial_indices.append(partial_index_file)
-    
-    
     # update result file
     write_result_to_file()
-    print("dumped")
+    print("dumped partial index", len(partial_indices))
 
-
-# def write_merged_index_to_disk(merged_index):
-#     """
-#     Write the merged index to a JSON file
-#     """
-#     global output_file
-    
-#     # group by token and aggregate occurrences
-#     merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
-
-#     # write the merged index to a JSON file
-#     merged_index.to_json(output_file, orient="records")
-    
 
 def merge_partial_indices():
     """
-    merge all the partial indices into a single DataFrame.
+    merge all partial indices
     """
-    global merged_index
     global partial_indices
-    
-    # # initialize an empty DataFrame for merged index
-    # merged_index = pd.DataFrame(columns=["token", "freq"])
-    
-    # # merge all partial indices
-    # for file in partial_indices:
-    #     partial_index_df = pd.read_json(file)
-    #     merged_index = pd.concat([merged_index, partial_index_df], ignore_index=True)
-    #     print("merged file")
-    
-    # # group by token and combine frequencies
-    # merged_index = merged_index.groupby("token")["freq"].sum().reset_index()
 
-    # # write the merged index to a JSON file
-    # merged_index.to_json(output_file, orient="records")
+    with open(output_file, "w") as inverted_index_file:
+        # iterate through all words in the wordset
+        for token in word_set:
+            token_frequencies = []
+            
+            # iterate through each partial index
+            for partial_index_file in partial_indices:
+                # check if the token exists in the partial index
+                if token in token_locs[partial_index_file]:
+                    token_loc = token_locs[partial_index_file][token]
+                    with open(partial_index_file, "rb") as partial_file:
+                        partial_file.seek(token_loc)
+                        token_line = partial_file.readline()
+                        data = orjson.loads(token_line.decode())
+                        # extract the frequency
+                        token_frequencies.extend(data[token])
 
-
-    # initialize empty DataFrames for each range of tokens
-    tokens_0_f = pd.DataFrame(columns=["token", "freq"])
-    tokens_g_p = pd.DataFrame(columns=["token", "freq"])
-    tokens_r_z = pd.DataFrame(columns=["token", "freq"])
+            # write the combined frequencies to final inverted index
+            file_loc = inverted_index_file.tell()
+            combined_token_locs[token] = file_loc
+            json_data = {token: token_frequencies}
+            inverted_index_file.write(orjson.dumps(json_data).decode())
+            # add a newline to separate records
+            inverted_index_file.write('\n')  
     
-    # group tokens based on the first letter
-    for file in partial_indices:
-        with open(file, "rb") as f:
-            data = orjson.loads(f.read())  
-            for token_data in data:
-                token = token_data["token"]
-                freq = token_data["freq"]
-                first_letter = token[0].lower()
-
-                # calculate tf-idf score
-                new_freq = []
-                idf = math.log(file_count / len(freq))
-                for doc_freq in freq:
-                    tf = doc_freq[1] / file_wordcount_dict[doc_freq[0]]
-                    doc_freq.append(round(tf * idf, 6))
-                    new_freq.append(doc_freq)
-                freq = new_freq
-                
-                if first_letter.isdigit() or first_letter < "g":
-                    tokens_0_f = tokens_0_f._append({"token": token, "freq": freq}, ignore_index=True)
-                elif first_letter in "ghijklmnop":
-                    tokens_g_p = tokens_g_p._append({"token": token, "freq": freq}, ignore_index=True)
-                else:
-                    tokens_r_z = tokens_r_z._append({"token": token, "freq": freq}, ignore_index=True)
-    
-    
-    # sort the tokens alphabetically
-    tokens_0_f = tokens_0_f.sort_values(by="token")
-    tokens_g_p = tokens_g_p.sort_values(by="token")
-    tokens_r_z = tokens_r_z.sort_values(by="token")
-
-    # write DataFrames to JSON files
-    with open("0_f.json", "wb") as f:
-        f.write(orjson.dumps(tokens_0_f.to_dict(orient="records")))
-    with open("g_p.json", "wb") as f:
-        f.write(orjson.dumps(tokens_g_p.to_dict(orient="records")))
-    with open("r_z.json", "wb") as f:
-        f.write(orjson.dumps(tokens_r_z.to_dict(orient="records")))
+    print("merged all partial indices")
 
 
 def iterateDirectory() -> None:
@@ -277,33 +228,7 @@ def iterateDirectory() -> None:
     # dump one last time with current partial index
     if (len(partial_index) > 0):
         dump_partial_index()
-        # write_merged_index_to_disk(merged_index)
 
-
-def binary_search(tokens, query_word):
-    low = 0
-    high = len(tokens) - 1
-
-    while low <= high:
-        mid = (low + high) // 2
-
-        if tokens[mid]["token"] == query_word:
-            return mid
-        elif tokens[mid]["token"] < query_word:
-            low = mid + 1
-        else:
-            high = mid - 1
-
-    return -1  # Element was not found
-
-
-def get_file_prefix(word):
-    if word[0] < 'g':
-        return "0_f"
-    elif word[0] in "ghijklmnop":
-        return "g_p"
-    else:
-        return "r_z"
 
 def get_common_docs(nested_lists, query_word_count):
     # create a dictionary to store frequencies for each element
@@ -340,7 +265,6 @@ def process_user_query(query):
 
     # access the scores for each token in the query
     query_freqs_list = []
-    found_word = False
 
     for word in query_tokens:
         all_word_freqs = []
@@ -372,43 +296,65 @@ def write_result_to_file():
         output_result_file.write("number of unique words: " + str(len(word_set)) + "\n")
         
 
-def create_inverted_index():
+
+def main():
     # iterate through the files and process the tokens
     iterateDirectory()
 
-    # merge all partial indices into a single DataFrame
+    # merge the partial indices
     merge_partial_indices()
 
-    # write the final results to a file
-    write_result_to_file()
+    # # write the final results to a file
+    # write_result_to_file()
 
 
-def main():
-    # create inverted index
-    # create_inverted_index()
+    # write the token locations to a file
+    with open("token_locations.json", "w") as f:
+        f.write(orjson.dumps(token_locs).decode())
 
-    # prompt the user for a search query
-    query = input("Search: ")
+    # write the combined token locations to a file
+    with open("combined_token_locations.json", "w") as f:
+        f.write(orjson.dumps(combined_token_locs).decode())
+
+    # write the file id dict to a file
+    with open("file_id.json", "w") as f:
+        f.write(orjson.dumps(file_id_dict).decode())
+
+
+    # loc = combined_token_locs["toward"]
+    # with open(output_file, "rb") as file:
+
+    #     file.seek(loc)
+    #     token_line = file.readline()
+    #     data = orjson.loads(token_line.decode())
+    #     # extract the frequency
+    #     print(data)
+
+        
+
+
+    # # prompt the user for a search query
+    # query = input("Search: ")
     
-    # start the timer in ms
-    start_time = time.time_ns() // 1000000   
+    # # start the timer in ms
+    # start_time = time.time_ns() // 1000000   
 
-    # get the top docs
-    common_docs_dict = process_user_query(query)
+    # # get the top docs
+    # common_docs_dict = process_user_query(query)
 
-    # take top 5 documents
-    top_5_docs = dict(list(common_docs_dict.items())[:5])
+    # # take top 5 documents
+    # top_5_docs = dict(list(common_docs_dict.items())[:5])
 
-    top_5_doc_ids = list(top_5_docs.keys())
+    # top_5_doc_ids = list(top_5_docs.keys())
 
-    print("documents:", top_5_doc_ids)
-    print("file id dict size:", len(file_id_dict))
+    # print("documents:", top_5_doc_ids)
+    # print("file id dict size:", len(file_id_dict))
     
     
-    # end timer
-    end_time = time.time_ns() // 1000000
-    execution_time = end_time - start_time
-    print("time:", execution_time, "ms")
+    # # end timer
+    # end_time = time.time_ns() // 1000000
+    # execution_time = end_time - start_time
+    # print("time:", execution_time, "ms")
 
 
 if __name__ == "__main__":
