@@ -10,6 +10,9 @@ import math
 # dict where key is the file and the value is the doc id 
 file_id_dict = {}
 
+# dict where key is doc id and value is url
+url_dict = {}
+
 # keep track the length of each document
 file_wordcount_dict = {}
 
@@ -24,6 +27,8 @@ word_set = set()
 
 # threshold for max tokens per partial index
 partial_index_threshold = 90000
+partial_index_threshold = 6000
+
 
 # number of files processed
 file_count = 0
@@ -33,10 +38,6 @@ max_file_size = 20 * 1024 * 1024
 token_locs = {}
 
 combined_token_locs = {}
-
-# final file for inverted index
-output_file = "inverted_index.json"
-
 
 def tokenize(file: str) -> list:
     global file_count
@@ -52,10 +53,8 @@ def tokenize(file: str) -> list:
         if "</html>" not in file_info["content"].lower():
             # skip non-HTML content
             return []
-        
-        # increment file count
-        file_count += 1
 
+        # get tokens
         content = file_info["content"]
         
         # create a bs obj to scrape the content
@@ -72,6 +71,22 @@ def tokenize(file: str) -> list:
 
         # sort the tokens
         tokens = sorted(tokens)
+
+        # update variables
+        # increment file count
+        file_count += 1
+
+        # add the doc id and file to file_id dict
+        dict_length = len(file_id_dict)
+        doc_id = str(dict_length + 1)
+        file_id_dict[file] = doc_id
+
+        # add the url to the url dict
+        url = file_info["url"]
+        url_dict[doc_id] = url
+
+        # update the word count
+        file_wordcount_dict[doc_id] = len(tokens)
 
         return tokens
     except FileNotFoundError as e:
@@ -104,13 +119,6 @@ def process_tokens(file):
 
         for token in tokens:
             word_set.add(token)
-    
-        dict_length = len(file_id_dict)
-        doc_id = dict_length + 1
-        file_id_dict[file] = doc_id
-
-        # update the word count
-        file_wordcount_dict[doc_id] = len(tokens)
     return tokens
 
 
@@ -172,7 +180,7 @@ def merge_partial_indices():
     """
     global partial_indices
 
-    with open(output_file, "w") as inverted_index_file:
+    with open("final_index.json", "w") as inverted_index_file:
         # iterate through all words in the wordset
         for token in word_set:
             token_frequencies = []
@@ -188,15 +196,28 @@ def merge_partial_indices():
                         data = orjson.loads(token_line.decode())
                         # extract the frequency
                         token_frequencies.extend(data[token])
+            
+            # create a new list for token frequencies with scores
+            token_frequencies_scores = []
+
+            # iterate through the token's frequencies and add the tf-idf score for each doc
+            for token_freq in token_frequencies:
+                doc_id = token_freq[0]
+                file_freq = token_freq[1]
+                file_wordcount = file_wordcount_dict[str(doc_id)]
+                tf = file_freq / file_wordcount
+                idf = math.log(file_count / len(token_frequencies))
+                tf_idf = round(tf * idf, 5)
+                token_frequencies_scores.append([doc_id, file_freq, tf_idf])
 
             # write the combined frequencies to final inverted index
             file_loc = inverted_index_file.tell()
             combined_token_locs[token] = file_loc
-            json_data = {token: token_frequencies}
+            json_data = {token: token_frequencies_scores}
             inverted_index_file.write(orjson.dumps(json_data).decode())
             # add a newline to separate records
             inverted_index_file.write('\n')  
-    
+
     print("merged all partial indices")
 
 
@@ -319,6 +340,10 @@ def main():
     # write the file id dict to a file
     with open("file_id.json", "w") as f:
         f.write(orjson.dumps(file_id_dict).decode())
+
+    with open("url_dict.json", "w") as f:
+        f.write(orjson.dumps(url_dict).decode())
+
 
 
     # loc = combined_token_locs["toward"]
