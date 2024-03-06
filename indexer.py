@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import orjson
 import re
@@ -272,39 +273,76 @@ def get_common_docs(nested_lists, query_word_count):
     return common_docs_dict
 
 
-def process_user_query(query):
+def process_user_query(query, token_loc_dict):
     """
     process the user's query and return a list of documents that include the user's query words
     """ 
+    # set the exact query bool to true
+    exact_query = True
+
     # tokenize the query:
-    query_tokens = re.split(r'[^a-zA-Z0-9]+', query.lower())
-    query_tokens = [token for token in query_tokens if token and len(token) > 1]
-    query_tokens = sorted(query_tokens)
+    search_tokens = re.split(r'[^a-zA-Z0-9]+', query.lower())
+    search_tokens = [token for token in search_tokens if token and len(token) > 1]
 
     # stem the query:
-    query_tokens = stem_tokens(query_tokens)
+    query_tokens = stem_tokens(search_tokens)
+
+    query_tokens_dict = {k: v for k, v in zip(query_tokens, search_tokens)}
 
     # access the scores for each token in the query
-    query_freqs_list = []
+    query_tokens_lines = []
 
+    accepted_query_tokens = []
+
+    # check if the word exists in inverted index
     for word in query_tokens:
-        all_word_freqs = []
-        file_prefix = get_file_prefix(word)
-        with open(f"{file_prefix}.json", "rb") as f:
-            tokens = orjson.loads(f.read())
-            for i in range(len(tokens)):
-                if tokens[i]["token"] == word:
-                    found_word = True
-                    token_freqs = tokens[i]["freq"]
-                    all_word_freqs.extend(token_freqs)
-                      
-        query_freqs_list.append(all_word_freqs)
+        try:
+            word_loc = token_loc_dict[word]
+            accepted_query_tokens.append(word)
+        except KeyError:
+            # set exact query to false
+            exact_query = False
+    
+    # return empty result if no query tokens exist
+    if len(accepted_query_tokens) == 0:
+        return [], "", False
+    
+    # offer alternative search for nonnexistent words
+    result_words = [query_tokens_dict[word] for word in accepted_query_tokens if word in accepted_query_tokens]
+    result_query = " ".join(result_words)
+    
+    # get all postings of tokens in the accepted query tokens
+    for word in accepted_query_tokens:
+        with open("final_index.json", "rb") as index_file:
+            index_file.seek(word_loc)
+            token_line = index_file.readline()
+            token_data = orjson.loads(token_line.decode())
+            query_tokens_lines.append(token_data)
 
-        common_docs_dict = get_common_docs(query_freqs_list, len(query_tokens))
+    # extract the common documents that have all the words
+    all_doc_ids = [set([item[0] for item in list(line.values())[0]]) for line in query_tokens_lines]
+    common_doc_ids = set.intersection(*all_doc_ids)
 
-        common_docs_dict = dict(sorted(common_docs_dict.items(), key=lambda x: x[1][1], reverse=True))
+    # dict to store the total sum of third values for each common document
+    common_docs_scores = {}
 
-    return common_docs_dict
+    # iterate through the lines and sum up the third values for common documents
+    for line in query_tokens_lines:
+        for word, postings in line.items():
+            for item in postings:
+                doc_id = item[0]
+                if doc_id in common_doc_ids:
+                    common_docs_scores.setdefault(doc_id, 0)
+                    common_docs_scores[doc_id] += item[2]
+    
+    # sort the elements based on scores descending
+    sorted_doc_sum = sorted(common_docs_scores.items(), key=lambda x: x[1], reverse=True)
+
+    # return the top doc ids
+    common_doc_ids_list = [item[0] for item in sorted_doc_sum] if sorted_doc_sum else []
+    
+    # return common docs sorted
+    return common_doc_ids_list, result_query, exact_query
 
     
 def write_result_to_file():
@@ -315,19 +353,18 @@ def write_result_to_file():
     with open(result_file, "w") as output_result_file:
         output_result_file.write("number of documents processed: " + str(file_count) + "\n")
         output_result_file.write("number of unique words: " + str(len(word_set)) + "\n")
-        
 
 
-def main():
+def create_inverted_index():
     # iterate through the files and process the tokens
     iterateDirectory()
 
     # merge the partial indices
     merge_partial_indices()
 
-    # # write the final results to a file
-    # write_result_to_file()
-
+    # write results to files
+    # write the final results to a file
+    write_result_to_file()
 
     # write the token locations to a file
     with open("token_locations.json", "w") as f:
@@ -342,44 +379,57 @@ def main():
         f.write(orjson.dumps(file_id_dict).decode())
 
     with open("url_dict.json", "w") as f:
-        f.write(orjson.dumps(url_dict).decode())
+        f.write(orjson.dumps(url_dict).decode())   
 
 
+def main():
+    # create inverted index
+    # create_inverted_index()
 
-    # loc = combined_token_locs["toward"]
-    # with open(output_file, "rb") as file:
+    # process search queries
+    # load the token locations file
+    with open("combined_token_locations.json", "r") as token_loc_file:
+        loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
 
-    #     file.seek(loc)
-    #     token_line = file.readline()
-    #     data = orjson.loads(token_line.decode())
-    #     # extract the frequency
-    #     print(data)
+    # load the url dict from file
+    with open("url_dict.json", "r") as url_dict_file:
+        loaded_url_dict = orjson.loads(url_dict_file.read())    
 
-        
-
-
-    # # prompt the user for a search query
-    # query = input("Search: ")
+    # prompt the user for a search query
+    query = input("Search: ")
     
-    # # start the timer in ms
-    # start_time = time.time_ns() // 1000000   
+    # start the timer in ms
+    start_time = time.time_ns() // 1000000   
 
-    # # get the top docs
-    # common_docs_dict = process_user_query(query)
+    # get the top 5 docs
+    common_docs, result_query, exact_query = process_user_query(query, loaded_token_loc_dict)
 
-    # # take top 5 documents
-    # top_5_docs = dict(list(common_docs_dict.items())[:5])
+    if common_docs == [] or not exact_query:
+        print('No results for "' + query + '"')
+    if common_docs != []:
+        urls_list = []
 
-    # top_5_doc_ids = list(top_5_docs.keys())
+        # remove the fragments from common docs
+        while (len(urls_list) < 5 and len(common_docs) > 0):
+            # print the urls in the common docs
+            common_doc = common_docs[0]
+            doc_url = loaded_url_dict[common_doc]
+            url_without_fragment = doc_url.split("#")[0]
+            if url_without_fragment not in urls_list:
+                urls_list.append(url_without_fragment)
+            common_docs = common_docs[1:]
 
-    # print("documents:", top_5_doc_ids)
-    # print("file id dict size:", len(file_id_dict))
+        # print the results
+        print('Showing results for "' + result_query + '"')
+        for num, url in enumerate(urls_list):
+            print(str(num + 1), url)
     
-    
-    # # end timer
-    # end_time = time.time_ns() // 1000000
-    # execution_time = end_time - start_time
-    # print("time:", execution_time, "ms")
+    # end timer
+    end_time = time.time_ns() // 1000000
+
+    # calculate execution time
+    execution_time = end_time - start_time
+    print("Search time:", execution_time, "ms")
 
 
 if __name__ == "__main__":
