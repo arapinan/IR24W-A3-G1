@@ -30,7 +30,6 @@ word_set = set()
 partial_index_threshold = 90000
 # partial_index_threshold = 6000
 
-
 # number of files processed
 file_count = 0
 
@@ -40,6 +39,19 @@ min_file_size = 3000
 token_locs = {}
 
 combined_token_locs = {}
+
+checksum_set = set()
+
+
+def checksum(tokens):
+    """
+    Calculate the checksum of each page
+    """
+    sum = 0
+    for token in tokens:
+        for char in token:
+            sum += ord(char)
+    return sum
 
 
 def tokenize(file: str) -> list:
@@ -113,6 +125,12 @@ def tokenize(file: str) -> list:
         # dont process files with too little content
         if len(tokens) < 100:
             return []
+
+        # dont process files with exact similarity
+        sum = checksum(tokens)
+        if sum in checksum_set:
+            return []
+        checksum_set.add(sum)
                     
         # update variables
         # increment file count
