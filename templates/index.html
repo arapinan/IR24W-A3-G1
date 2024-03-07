@@ -16,6 +16,9 @@
                 {% if loop.index == 1 %}
                     {{ message }}
                     <br>
+                {% elif loop.index == messages|length %}                    
+                    {{ message }}
+                    <br>
                 {% else %}
                     <a href="{{ message }}">{{ message }}</a>
                     <br>

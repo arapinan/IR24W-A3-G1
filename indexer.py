@@ -423,24 +423,16 @@ def create_inverted_index():
     with open("url_dict.json", "w") as f:
         f.write(orjson.dumps(url_dict).decode())   
 
+ 
 
-def process_search():
-    # load the token locations file
-    with open("combined_token_locations.json", "r") as token_loc_file:
-        loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
-
-    # load the url dict from file
-    with open("url_dict.json", "r") as url_dict_file:
-        loaded_url_dict = orjson.loads(url_dict_file.read())    
-
-    # prompt the user for a search query
-    query = input("Search: ")
-    
+def process_search(query, loaded_token_loc_dict, loaded_url_dict):    
     # start the timer in ms
     start_time = time.time_ns() // 1000000   
 
     # get the top 5 docs
     common_docs, result_query, exact_query = process_user_query(query, loaded_token_loc_dict)
+
+    urls_list = []
 
     if common_docs == [] or not exact_query:
         print('No results for "' + query + '"')
@@ -455,8 +447,6 @@ def process_search():
             url_without_fragment = doc_url.split("#")[0]
             if url_without_fragment not in urls_list:
                 urls_list.append(url_without_fragment)
-
-                print(common_doc)
             common_docs = common_docs[1:]
 
         # print the results
@@ -471,13 +461,27 @@ def process_search():
     execution_time = end_time - start_time
     print("Search time:", execution_time, "ms")
 
+    return urls_list, result_query, exact_query
+
 
 def main():
     # create inverted index
     # create_inverted_index()
 
+    # load the token locations file
+    with open("combined_token_locations.json", "r") as token_loc_file:
+        loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
+
+    # load the url dict from file
+    with open("url_dict.json", "r") as url_dict_file:
+        loaded_url_dict = orjson.loads(url_dict_file.read())    
+
+    # prompt the user for a search query
+    query = input("Search: ")
+
     # process search queries
-    process_search()
+    process_search(query, loaded_token_loc_dict, loaded_url_dict)
+
      
 
 if __name__ == "__main__":
