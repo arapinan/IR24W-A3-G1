@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Google 2.0</title>
+    <link rel="stylesheet" type="text/css" href="static/css/style.css">
+</head>
+<body>
+    <h1>Google 2.0</h1>
+    <form action="query" method="post">
+        <input type="text" name="name_input" placeholder="search...">
+        <br>
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for message in messages %}
+                {% if loop.index == 1 %}
+                    {{ message }}
+                    <br>
+                {% else %}
+                    <a href="{{ message }}">{{ message }}</a>
+                    <br>
+                {% endif %}
+            {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </form>
+</body>
+</html>
