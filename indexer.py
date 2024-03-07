@@ -40,7 +40,9 @@ token_locs = {}
 
 combined_token_locs = {}
 
+# variables to check for exact/near similarity
 checksum_set = set()
+fingerprint_set = set()
 
 
 def checksum(tokens):
@@ -52,6 +54,40 @@ def checksum(tokens):
         for char in token:
             sum += ord(char)
     return sum
+
+
+def hash_word(word):
+    hash_value = 0
+    for char in word:
+        hash_value += ord(char)
+
+    hash_value %= 65536
+
+    bin_hash = bin(hash_value)[2:].zfill(16)
+    return bin_hash
+
+
+def simhash(page_dict: dict):
+    """
+    Detect similar documents. page_dict is every single word on a page with its frequency.
+    """
+    # Hash each word in the page_dict
+    word_hashes = {word: hash_word(word) for word in page_dict.keys()}
+    # Initialize fingerprint with 16 bits set to 0
+    fingerprint = [0] * 16   
+
+    # Combine hashes using XOR
+    for word, hash_value in word_hashes.items():
+        for i in range(16):  # Iterate over each bit position
+            # Extract i-th bit from the hash value
+            bit = (int(hash_value) // (2 ** i)) % 2
+            # Update fingerprint using XOR
+            fingerprint[i] ^= bit * page_dict[word]
+
+    # Convert fingerprint to binary string
+    fingerprint_str = ''.join(map(str, fingerprint))
+
+    return fingerprint_str
 
 
 def tokenize(file: str) -> list:
@@ -131,24 +167,54 @@ def tokenize(file: str) -> list:
         if sum in checksum_set:
             return []
         checksum_set.add(sum)
-                    
-        # update variables
-        # increment file count
-        file_count += 1
 
-        # add the doc id and file to file_id dict
-        dict_length = len(file_id_dict)
-        doc_id = str(dict_length + 1)
-        file_id_dict[file] = doc_id
+        # create the doc's page_dict (key: token, value: freq) for simhash
+        page_dict = {}
+        for token in tokens:
+            if token in page_dict:  # if the key exists, increment its frequency
+                page_dict[token] += 1
+            else:  # if the key doesn't exist, add it to the dictionary and update its frequency
+                page_dict[token] = 1
 
-        # add the url to the url dict
-        url = file_info["url"]
-        url_dict[doc_id] = url
+        # dont process files with near similarity
+        fingerprint = simhash(page_dict)
+        near_duplicate = False
+        if (fingerprint not in fingerprint_set):
+            for i in range(16):
+                # make a copy of the original fingerprint
+                new_fingerprint = list(fingerprint)
+                # flip 1 bit at a time to detect near similarity
+                if new_fingerprint[i] == "1":
+                    new_fingerprint[i] = "0"
+                else:
+                     new_fingerprint[i] = "1"
+                if "".join(new_fingerprint) in fingerprint_set:
+                    fingerprint_set.add(fingerprint)
+                    near_duplicate = True
+                    break
+  
+        # check if fingerprint already exists to detect exact similarity or if there is near similarity
+        if (fingerprint not in fingerprint_set) and not near_duplicate:        
+            # update variables
+            # increment file count
+            file_count += 1
 
-        # update the word count
-        file_wordcount_dict[doc_id] = len(tokens)
+            # add the doc id and file to file_id dict
+            dict_length = len(file_id_dict)
+            doc_id = str(dict_length + 1)
+            file_id_dict[file] = doc_id
 
-        return tokens
+            # add the url to the url dict
+            url = file_info["url"]
+            url_dict[doc_id] = url
+
+            # update the word count
+            file_wordcount_dict[doc_id] = len(tokens)
+
+            # add fingerprint to the set
+            fingerprint_set.add(fingerprint)
+            return tokens
+        return []
     except FileNotFoundError as e:
         return []
 
@@ -500,7 +566,6 @@ def main():
     # process search queries
     process_search(query, loaded_token_loc_dict, loaded_url_dict)
 
-     
 
 if __name__ == "__main__":
     main()
