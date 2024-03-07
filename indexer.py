@@ -28,17 +28,19 @@ word_set = set()
 
 # threshold for max tokens per partial index
 partial_index_threshold = 90000
-partial_index_threshold = 6000
+# partial_index_threshold = 6000
 
 
 # number of files processed
 file_count = 0
 
 max_file_size = 20 * 1024 * 1024
+min_file_size = 3000
 
 token_locs = {}
 
 combined_token_locs = {}
+
 
 def tokenize(file: str) -> list:
     global file_count
@@ -70,9 +72,48 @@ def tokenize(file: str) -> list:
         # remove empty strings and single chars from token list
         tokens = [token for token in tokens if token and len(token) > 1]
 
-        # sort the tokens
-        tokens = sorted(tokens)
+        # Find all bolded (<b>, <strong>) tags
+        bold_tags = soup.find_all(['b', 'strong'])
+        for tag in bold_tags:
+            text = re.sub(r'\s+', ' ', tag.get_text())
+            temps = re.split(r'[^a-zA-Z0-9]+', text.lower())
+            temps = [temp for temp in temps if temp and len(temp) > 1]
+            for temp in temps:
+                if temp in tokens:
+                    #print(tag.get_text().strip().lower())
+                    #tokens.append(tag.get_text().strip().lower())
+                    tokens.append(temp)
 
+        # Find the title tag
+        title_tag = soup.find('title')
+        if title_tag:
+            text = re.sub(r'\s+', ' ', title_tag.get_text())
+            temps = re.split(r'[^a-zA-Z0-9]+', text.lower())
+            temps = [temp for temp in temps if temp and len(temp) > 1]
+            for temp in temps:
+                if temp in tokens:
+                    #print(title_tag.get_text().strip().lower())
+                    #tokens.append(title_tag.get_text().strip().lower())
+                    tokens.append(temp)
+                    tokens.append(temp)
+
+        # Find all heading tags (<h1>, <h2>, <h3>)
+        heading_tags = soup.find_all(['h1', 'h2', 'h3'])
+        for tag in heading_tags:
+            text = re.sub(r'\s+', ' ', tag.get_text())
+            temps = re.split(r'[^a-zA-Z0-9]+', text.lower())
+            temps = [temp for temp in temps if temp and len(temp) > 1]
+            for temp in temps:
+                if temp in tokens:
+                    #print(tag.get_text().strip().lower())
+                    #tokens.append(tag.get_text().strip().lower())
+                    tokens.append(temp)
+                    tokens.append(temp)
+
+        # dont process files with too little content
+        if len(tokens) < 100:
+            return []
+                    
         # update variables
         # increment file count
         file_count += 1
@@ -239,8 +280,8 @@ def iterateDirectory() -> None:
                 #     process_file(file)
                 file_path = os.path.join(root, file)
                 file_size = os.path.getsize(file_path)
-                # check file size
-                if file_size < max_file_size:
+                # dont process too big or too small files
+                if file_size < max_file_size and file_size > min_file_size:
                     tokens = process_tokens(file_path)
                     process_file(file_path, tokens)
 
@@ -314,6 +355,7 @@ def process_user_query(query, token_loc_dict):
     # get all postings of tokens in the accepted query tokens
     for word in accepted_query_tokens:
         with open("final_index.json", "rb") as index_file:
+            word_loc = token_loc_dict[word]
             index_file.seek(word_loc)
             token_line = index_file.readline()
             token_data = orjson.loads(token_line.decode())
@@ -326,7 +368,7 @@ def process_user_query(query, token_loc_dict):
     # dict to store the total sum of third values for each common document
     common_docs_scores = {}
 
-    # iterate through the lines and sum up the third values for common documents
+    # iterate through the lines and sum up the third values for common documents    
     for line in query_tokens_lines:
         for word, postings in line.items():
             for item in postings:
@@ -382,11 +424,7 @@ def create_inverted_index():
         f.write(orjson.dumps(url_dict).decode())   
 
 
-def main():
-    # create inverted index
-    # create_inverted_index()
-
-    # process search queries
+def process_search():
     # load the token locations file
     with open("combined_token_locations.json", "r") as token_loc_file:
         loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
@@ -417,6 +455,8 @@ def main():
             url_without_fragment = doc_url.split("#")[0]
             if url_without_fragment not in urls_list:
                 urls_list.append(url_without_fragment)
+
+                print(common_doc)
             common_docs = common_docs[1:]
 
         # print the results
@@ -431,6 +471,14 @@ def main():
     execution_time = end_time - start_time
     print("Search time:", execution_time, "ms")
 
+
+def main():
+    # create inverted index
+    # create_inverted_index()
+
+    # process search queries
+    process_search()
+     
 
 if __name__ == "__main__":
     main()
