@@ -1,0 +1,43 @@
+Queries that called for improvements:
+1. “computer science”
+   1. Problem: The program took too long to find the set of documents that contain multiple token words (722ms).
+   2. Improvement: Improve the inverted index by using seek instead of iterating through partial indices.
+2. “wics”
+   1. Problem: The results had similar links with different fragments.
+   2. Improvement: Removed the fragments to only get urls for unique pages.
+3. “table of contents”
+   1. Problem: The window could be too large if the words appear in different places in the file.
+   2. Improvement: Accounted for important text that was bold, headers (h1, h2, h3), or titles to ensure that important query words are together in the document by giving them more weight.
+4. “testingstring” 
+   1. Problem: The token doesn’t exist in the corpus, so the program threw an error.
+   2. Improvement: Caught the error in the backend and informed the user that no searches match this query on the search interface.
+5. “machine testingstring” 
+   1. Problem: Part of the query exists in the corpus while the other doesn’t, which returns no results.
+   2. Improvement: Updated the program so that it still returns results related to the part of the query that does exist, which in this case is “machine” (we used an alternative, similar query).
+6. “house”
+   1. Problem: Results are really small files that have little to no content.
+   2. Improvement: Filtered out really small files so that the user can get results that are more relevant/useful to them.
+7. “a” 
+   1. Problem: The results had little to no meaning since practically every document has that character.
+   2. Improvement: Removed single character tokens from the index.
+8. “job opportunities apply” 
+   1. Problem: The results didn’t display links to apply for jobs, which would’ve been very useful in this case.
+   2. Improvement: We want anchor text to have higher relevance if people are looking for links to click, so we added more weight to anchor text.
+9. “mips”
+   1. Problem: The tf-idf score didn’t account for when a token occurs in a big file compared to a small one (a small file with the query token should have higher relevance)
+   2. Improvement: Keep track of the word count for each document and use it for calculating the tf-idf score for each token and posting.
+10. “hack at uci”
+   1. Problem: There are too many similar pages.
+   2. Improvement: Removed near and exact similar pages.
+
+Queries that tested the effectiveness and efficiency of the program with successful results:
+11. “iftekhar ahmed”
+12. “biology professors”
+13. “computer shop”
+14. “textbooks for sale”
+15. “acm”
+16. “master of software engineering”
+17. “student at uci”
+18. “ics 33 lab hours”
+19. “math tutors”
+20. “internship opportunities”
