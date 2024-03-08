@@ -1,0 +1,4 @@
+number of documents processed: 25568
+number of unique words: 262132
+number of files too large: 6
+number of files too small: 18946

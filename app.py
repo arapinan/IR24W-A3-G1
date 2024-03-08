@@ -37,11 +37,11 @@ def getResults():
 		if not exact_query:
 			flash('No results for "' + queryInput + '".' + "\n" + 'Showing results for "' + result_query + '"')
 			for num, url in enumerate(url_results):
-				flash(str(num + 1) + ". " + url)
+				flash(url)
 		else:
 			flash('Showing results for "' + result_query + '"')
 			for num, url in enumerate(url_results):
-				flash(str(num + 1) + ". " + url)
+				flash(url)
 
 	# end timer
 	end_time = time.time_ns() // 1000000

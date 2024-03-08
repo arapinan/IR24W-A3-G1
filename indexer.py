@@ -34,7 +34,10 @@ partial_index_threshold = 90000
 file_count = 0
 
 max_file_size = 20 * 1024 * 1024
-min_file_size = 3000
+min_file_size = 1000
+
+large_files = []
+small_files = []
 
 token_locs = {}
 
@@ -132,22 +135,9 @@ def tokenize(file: str) -> list:
                     #tokens.append(tag.get_text().strip().lower())
                     tokens.append(temp)
 
-        # Find the title tag
-        title_tag = soup.find('title')
-        if title_tag:
-            text = re.sub(r'\s+', ' ', title_tag.get_text())
-            temps = re.split(r'[^a-zA-Z0-9]+', text.lower())
-            temps = [temp for temp in temps if temp and len(temp) > 1]
-            for temp in temps:
-                if temp in tokens:
-                    #print(title_tag.get_text().strip().lower())
-                    #tokens.append(title_tag.get_text().strip().lower())
-                    tokens.append(temp)
-                    tokens.append(temp)
-
-        # Find all heading tags (<h1>, <h2>, <h3>)
-        heading_tags = soup.find_all(['h1', 'h2', 'h3'])
-        for tag in heading_tags:
+        # Find all heading tags (<h1>, <h2>, <h3>), title, and anchors
+        title_header_anchor_tags = soup.find_all(['a', 'b', 'strong', 'h1', 'h2', 'h3'])
+        for tag in title_header_anchor_tags:
             text = re.sub(r'\s+', ' ', tag.get_text())
             temps = re.split(r'[^a-zA-Z0-9]+', text.lower())
             temps = [temp for temp in temps if temp and len(temp) > 1]
@@ -160,6 +150,7 @@ def tokenize(file: str) -> list:
 
         # dont process files with too little content
         if len(tokens) < 100:
+            small_files.append(file)
             return []
 
         # dont process files with exact similarity
@@ -365,7 +356,11 @@ def iterateDirectory() -> None:
                 file_path = os.path.join(root, file)
                 file_size = os.path.getsize(file_path)
                 # dont process too big or too small files
-                if file_size < max_file_size and file_size > min_file_size:
+                if file_size > max_file_size:
+                    large_files.append(file_path)
+                elif file_size < min_file_size:
+                    small_files.append(file_path)
+                else:
                     tokens = process_tokens(file_path)
                     process_file(file_path, tokens)
 
@@ -479,6 +474,8 @@ def write_result_to_file():
     with open(result_file, "w") as output_result_file:
         output_result_file.write("number of documents processed: " + str(file_count) + "\n")
         output_result_file.write("number of unique words: " + str(len(word_set)) + "\n")
+        output_result_file.write("number of files too large: " + str(len(large_files)) + "\n")
+        output_result_file.write("number of files too small: " + str(len(small_files)) + "\n")
 
 
 def create_inverted_index():
@@ -506,6 +503,12 @@ def create_inverted_index():
 
     with open("url_dict.json", "w") as f:
         f.write(orjson.dumps(url_dict).decode())   
+
+    with open("small_files.json", "w") as f:
+        f.write(orjson.dumps(small_files).decode())   
+
+    with open("large_files.json", "w") as f:
+        f.write(orjson.dumps(large_files).decode())   
 
  
 
@@ -552,19 +555,19 @@ def main():
     # create inverted index
     # create_inverted_index()
 
-    # load the token locations file
-    with open("combined_token_locations.json", "r") as token_loc_file:
-        loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
+    # # load the token locations file
+    # with open("combined_token_locations.json", "r") as token_loc_file:
+    #     loaded_token_loc_dict = orjson.loads(token_loc_file.read())    
 
-    # load the url dict from file
-    with open("url_dict.json", "r") as url_dict_file:
-        loaded_url_dict = orjson.loads(url_dict_file.read())    
+    # # load the url dict from file
+    # with open("url_dict.json", "r") as url_dict_file:
+    #     loaded_url_dict = orjson.loads(url_dict_file.read())    
 
-    # prompt the user for a search query
-    query = input("Search: ")
+    # # prompt the user for a search query
+    # query = input("Search: ")
 
-    # process search queries
-    process_search(query, loaded_token_loc_dict, loaded_url_dict)
+    # # process search queries
+    # process_search(query, loaded_token_loc_dict, loaded_url_dict)
 
 
 if __name__ == "__main__":

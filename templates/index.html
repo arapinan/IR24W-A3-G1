@@ -5,27 +5,31 @@
     <title>Google 2.0</title>
     <link rel="stylesheet" type="text/css" href="static/css/style.css">
 </head>
+<style>
+     
+</style>
 <body>
-    <h1>Google 2.0</h1>
-    <form action="query" method="post">
-        <input type="text" name="name_input" placeholder="search...">
-        <br>
-        {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            {% for message in messages %}
-                {% if loop.index == 1 %}
-                    {{ message }}
-                    <br>
-                {% elif loop.index == messages|length %}                    
-                    {{ message }}
-                    <br>
-                {% else %}
-                    <a href="{{ message }}">{{ message }}</a>
-                    <br>
+    <header>
+        <h1>Google 2.0</h1>
+    </header>
+    <main>
+        <form action="query" method="post">
+            <input type="text" name="name_input" placeholder="Search...">
+            <button type="submit">Search</button>
+        </form>
+        <section id="search-results">
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        {% if loop.index == 1 or loop.last %}
+                            <p>{{ message }}</p>
+                        {% else %}
+                            <a href="{{ message }}">{{ message }}</a>
+                        {% endif %}
+                    {% endfor %}
                 {% endif %}
-            {% endfor %}
-        {% endif %}
-        {% endwith %}
-    </form>
+            {% endwith %}
+        </section>
+    </main>
 </body>
 </html>
