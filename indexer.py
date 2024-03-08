@@ -553,7 +553,7 @@ def process_search(query, loaded_token_loc_dict, loaded_url_dict):
 
 def main():
     # create inverted index
-    # create_inverted_index()
+    create_inverted_index()
 
     # # load the token locations file
     # with open("combined_token_locations.json", "r") as token_loc_file:
